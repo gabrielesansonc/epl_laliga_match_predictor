@@ -1,11 +1,11 @@
 """Single-function match inference workflow."""
 
-from datetime import timedelta
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
-from src.data.extract import align_team_names
+from src.data.extract import align_team_names, load_upcoming_fixtures
 from src.features.engineering import assign_season, build_features, select_raw_columns
 from src.models.predict import load_model, predict
 
@@ -49,17 +49,24 @@ def predict_match_probability(home_team: str, away_team: str) -> str:
         for div, teams in current_teams_by_div.items()
         if matched_home in teams and matched_away in teams
     ]
-    if not candidate_divisions:
-        raise ValueError(
-            f"Could not find a supported league for {matched_home} vs {matched_away}."
-        )
     if len(candidate_divisions) > 1:
         raise ValueError(
             f"Multiple leagues matched for {matched_home} vs {matched_away}: {candidate_divisions}"
         )
 
-    match_division = candidate_divisions[0]
-    match_date = history.loc[history["Div"] == match_division, "Date"].max() + timedelta(days=1)
+    if len(candidate_divisions) == 1:
+        match_division = candidate_divisions[0]
+    else:
+        # Cross-league match (e.g. UCL): teams belong to different divisions.
+        # Check both teams are known individually.
+        all_known = {team for teams in current_teams_by_div.values() for team in teams}
+        unknown = [t for t in (matched_home, matched_away) if t not in all_known]
+        if unknown:
+            raise ValueError(
+                f"Unknown team(s): {unknown}. Check spelling or use a supported team."
+            )
+        match_division = "UCL"
+    match_date = pd.Timestamp(datetime.now().date())
     match_to_score = pd.DataFrame(
         [{
             "Div": match_division,
@@ -69,7 +76,29 @@ def predict_match_probability(home_team: str, away_team: str) -> str:
         }]
     )
 
-    combined = pd.concat([history, match_to_score], ignore_index=True)
+    # Load all upcoming league fixtures so that HomeRank/AwayRank are computed
+    # against the full 20-team pool on match_date, not just the 2 teams in this
+    # single fixture (which would give artificially low rank values).
+    upcoming = load_upcoming_fixtures()
+    upcoming = align_team_names(upcoming.copy(), valid_names)
+    # Only add fixtures from the relevant division(s); exclude the target match
+    # itself since it is already in match_to_score.
+    if match_division == "UCL":
+        home_div = next(d for d, t in current_teams_by_div.items() if matched_home in t)
+        away_div = next(d for d, t in current_teams_by_div.items() if matched_away in t)
+        divs_to_pad = {home_div, away_div}
+    else:
+        divs_to_pad = {match_division}
+
+    padding = upcoming[
+        upcoming["Div"].isin(divs_to_pad)
+        & ~(
+            (upcoming["HomeTeam"] == matched_home)
+            & (upcoming["AwayTeam"] == matched_away)
+        )
+    ].copy()
+
+    combined = pd.concat([history, padding, match_to_score], ignore_index=True)
     engineered = build_features(combined, drop_na=False)
     match_features = engineered[
         (engineered["Div"] == match_division)

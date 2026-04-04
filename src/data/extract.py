@@ -5,7 +5,7 @@ Downloads historical match data from football-data.co.uk and scrapes
 upcoming fixtures from TalkSport.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import requests
@@ -110,14 +110,67 @@ def load_historical_data(
 # Upcoming fixtures
 # ---------------------------------------------------------------------------
 
-def _parse_fixtures_page(soup: BeautifulSoup) -> list[tuple[str, str, bool]]:
-    """Extract (home, away, has_score) tuples from a TalkSport fixtures page."""
-    containers = soup.find_all(
+def _parse_date_text(text: str, reference: datetime) -> str | None:
+    """Convert a TalkSport date header like 'Saturday 4th Apr' to 'YYYY-MM-DD'.
+
+    Tries the reference year first; if the resulting date is more than 30 days in
+    the past it adds a year (handles fixtures that wrap across a calendar year).
+    """
+    import re
+    # Remove weekday prefix (Monday, Tue, Saturday, …)
+    clean = re.sub(r"^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s*", "", text, flags=re.IGNORECASE)
+    # Remove ordinal suffixes: 4th → 4, 21st → 21
+    clean = re.sub(r"(\d+)(st|nd|rd|th)", r"\1", clean).strip()
+    for year in (reference.year, reference.year + 1):
+        try:
+            dt = datetime.strptime(f"{clean} {year}", "%d %b %Y")
+            if dt.date() >= (reference - timedelta(days=30)).date():
+                return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_fixtures_page(
+    soup: BeautifulSoup, reference: datetime
+) -> list[tuple[str | None, str, str, bool]]:
+    """Extract (date_iso, home, away, has_score) from a TalkSport fixtures page.
+
+    Page structure: all fixture containers are direct children of a single
+    ``FixturesAndResultsContainer`` wrapper.  The *first* container of each
+    matchday embeds a ``FixturesHeader__title`` element with a human-readable
+    date ("Saturday 4th Apr").  Subsequent containers for that day carry no
+    header — the last seen date is reused.
+
+    A match is considered upcoming when its ``FixtureDetails__time`` element
+    contains a kick-off time (HH:MM); if that element is absent or holds a
+    score the match is treated as already played.
+    """
+    import re
+
+    wrapper = soup.find(True, class_=lambda c: c and "FixturesAndResultsContainer" in c)
+    if wrapper is None:
+        return []
+
+    results: list[tuple[str | None, str, str, bool]] = []
+    seen: set[tuple[str, str]] = set()
+    current_date: str | None = None
+
+    for container in wrapper.find_all(
         True,
-        class_=lambda c: c and "CompetitionFixtures" in c and "container" in c,
-    )
-    results = []
-    for container in containers:
+        class_=lambda c: c and "CompetitionFixtures" in c and "container" in c.lower(),
+        recursive=False,
+    ):
+        # Update current_date whenever this container opens a new matchday
+        header_el = container.find(
+            True, class_=lambda c: c and "FixturesHeader" in c and "title" in c
+        )
+        if header_el:
+            parsed = _parse_date_text(header_el.text.strip(), reference)
+            if parsed:
+                current_date = parsed
+
+        # Extract team names
         teams = container.find_all(
             True,
             class_=lambda c: c and "__team" in c and "Wrapper" not in c
@@ -127,59 +180,83 @@ def _parse_fixtures_page(soup: BeautifulSoup) -> list[tuple[str, str, bool]]:
             continue
         home = teams[0].text.strip()
         away = teams[1].text.strip()
-        score_el = container.find(
-            True, class_=lambda c: c and "Score" in c and "score" in c,
+
+        key = (home, away)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        # Determine played vs upcoming via the __time element:
+        # upcoming → "14:15" / "19:00"; played → score text or absent
+        time_el = container.find(
+            True, class_=lambda c: c and "FixtureDetails" in c and "__time" in c
         )
-        has_score = bool(score_el and score_el.text.strip())
-        results.append((home, away, has_score))
+        if time_el:
+            time_text = time_el.text.strip()
+            has_score = not bool(re.match(r"^\d{1,2}:\d{2}$", time_text))
+        else:
+            has_score = True  # no time element → treat as already played
+
+        results.append((current_date, home, away, has_score))
+
     return results
 
 
 def _scrape_fixtures(
     base_url: str, div_code: str, max_matches: int = 10,
 ) -> pd.DataFrame:
-    """Scrape upcoming (unplayed) fixtures from TalkSport.
+    """Return a DataFrame of the next ``max_matches`` upcoming fixtures, sorted by date.
 
-    Checks the current month first; if all matches are played, advances
-    to the next month to find the next matchday.
+    The TalkSport fixtures page lists all upcoming matchdays on a single page,
+    so a single fetch is normally sufficient.  A second fetch (next month URL)
+    is attempted as a fallback if fewer than ``max_matches`` unplayed matches
+    are found.
     """
     now = datetime.now()
+    all_upcoming: list[tuple[str, str, str]] = []  # (date_iso, home, away)
+    seen: set[tuple[str, str]] = set()
 
     for month_offset in range(0, 3):
-        # Build URL: base for current month, base/YYYY-MM for future months
-        target = datetime(now.year, now.month, 1)
-        month = target.month + month_offset
-        year = target.year + (month - 1) // 12
+        month = now.month + month_offset
+        year = now.year + (month - 1) // 12
         month = (month - 1) % 12 + 1
 
-        if month_offset == 0:
-            url = base_url
-        else:
-            url = f"{base_url}/{year}-{month:02d}"
+        url = base_url if month_offset == 0 else f"{base_url}/{year}-{month:02d}"
 
         resp = requests.get(url, headers=REQUEST_HEADERS, timeout=15)
         if resp.status_code != 200:
             continue
 
         soup = BeautifulSoup(resp.content, "html.parser")
-        fixtures = _parse_fixtures_page(soup)
+        for date_iso, home, away, has_score in _parse_fixtures_page(soup, now):
+            if has_score:
+                continue
+            key = (home, away)
+            if key in seen:
+                continue
+            seen.add(key)
+            all_upcoming.append((date_iso or now.strftime("%Y-%m-%d"), home, away))
 
-        # Keep only unplayed fixtures
-        upcoming = [(h, a) for h, a, has_score in fixtures if not has_score]
+        if len(all_upcoming) >= max_matches:
+            break
 
-        if upcoming:
-            home = [h for h, _ in upcoming[:max_matches]]
-            away = [a for _, a in upcoming[:max_matches]]
-            today = now.strftime("%d/%m/%Y")
-            return pd.DataFrame({
-                "Div": div_code,
-                "Date": today,
-                "HomeTeam": home,
-                "AwayTeam": away,
-            })
+    if not all_upcoming:
+        return pd.DataFrame(columns=["Div", "Date", "HomeTeam", "AwayTeam"])
 
-    # Fallback: return empty if no upcoming fixtures found
-    return pd.DataFrame(columns=["Div", "Date", "HomeTeam", "AwayTeam"])
+    # Sort chronologically and keep only the next max_matches
+    all_upcoming.sort(key=lambda x: x[0])
+    all_upcoming = all_upcoming[:max_matches]
+
+    rows = [
+        {
+            "Div": div_code,
+            "Date": datetime.fromisoformat(d).strftime("%d/%m/%Y"),
+            "HomeTeam": home,
+            "AwayTeam": away,
+        }
+        for d, home, away in all_upcoming
+    ]
+    return pd.DataFrame(rows)
 
 
 def load_upcoming_fixtures(fixture_pages: dict[str, str] = None) -> pd.DataFrame:
