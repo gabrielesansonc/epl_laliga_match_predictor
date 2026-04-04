@@ -1,13 +1,8 @@
 pandas>=2.0
 numpy>=1.26
-xgboost>=2.0
 scikit-learn>=1.4
 beautifulsoup4>=4.12
 requests>=2.31
 fuzzywuzzy>=0.18
-python-Levenshtein>=0.25   # speeds up fuzzywuzzy
-optuna>=3.1                # hyperparameter optimization
-nbformat>=5.9              # only needed for notebook work
 fastapi>=0.116
-uvicorn>=0.35
 python-multipart>=0.0.20

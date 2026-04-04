@@ -3,18 +3,18 @@ Model training, evaluation, and inference utilities.
 """
 
 from pathlib import Path
+from typing import Any
 
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
     confusion_matrix,
     ConfusionMatrixDisplay,
 )
-from xgboost import XGBClassifier
 
 from src.features.engineering import FEATURE_COLUMNS, LABEL_MAP, INV_LABEL_MAP
 
@@ -82,7 +82,7 @@ def train_model(
     n_iter: int = 5,
     cv: int = 3,
     random_state: int = 42,
-) -> XGBClassifier:
+) -> Any:
     """Train an XGBoost classifier with randomised hyperparameter search.
 
     Class weights are applied to address the home-win / draw / away-win
@@ -98,6 +98,9 @@ def train_model(
     Returns:
         The best fitted XGBClassifier found by the search.
     """
+    from sklearn.model_selection import RandomizedSearchCV
+    from xgboost import XGBClassifier
+
     base = XGBClassifier(**XGB_BASE_PARAMS)
     search = RandomizedSearchCV(
         base,
@@ -121,7 +124,7 @@ def train_model(
 # ---------------------------------------------------------------------------
 
 def evaluate_model(
-    model: XGBClassifier,
+    model: Any,
     X_test: pd.DataFrame,
     y_test: pd.Series,
 ) -> dict:
@@ -177,7 +180,7 @@ def load_model(path: Path):
 # Inference
 # ---------------------------------------------------------------------------
 
-def predict(model: XGBClassifier, X: pd.DataFrame) -> pd.DataFrame:
+def predict(model: Any, X: pd.DataFrame) -> pd.DataFrame:
     """Run inference and return labels + probabilities.
 
     Args:
