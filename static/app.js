@@ -264,28 +264,62 @@ function renderValidation(content) {
   fetchValidation('All');
 }
 
+function recentResultRowHTML(r) {
+  const resultBadge = `<span class="outcome-badge outcome-${r.result.toLowerCase()}">${r.result}</span>`;
+  const predBadge   = `<span class="outcome-badge outcome-${r.predicted.toLowerCase()}">${r.predicted}</span>`;
+  const correctMark = r.correct
+    ? `<span class="result-correct">✓</span>`
+    : `<span class="result-incorrect">✗</span>`;
+  return `
+    <tr>
+      <td class="cell-dim">${esc(r.date)}</td>
+      <td class="cell-dim">${esc(r.league)}</td>
+      <td class="cell-home">${esc(r.home_team)}</td>
+      <td class="cell-score">${r.home_goals}–${r.away_goals}</td>
+      <td class="cell-away">${esc(r.away_team)}</td>
+      <td class="cell-prob prob-home">${Math.round(r.prob_h * 100)}%</td>
+      <td class="cell-prob prob-draw">${Math.round(r.prob_d * 100)}%</td>
+      <td class="cell-prob prob-away">${Math.round(r.prob_a * 100)}%</td>
+      <td>${resultBadge}</td>
+      <td>${predBadge}</td>
+      <td class="cell-check">${correctMark}</td>
+    </tr>`;
+}
+
 async function fetchValidation(league) {
   const area = el('validation-area');
   if (!area) return;
 
   const key = 'val_' + league;
-  if (state.dataCache[key]) { buildValidationUI(state.dataCache[key]); return; }
+  if (state.dataCache[key]) { buildValidationUI(state.dataCache[key].data, state.dataCache[key].recent); return; }
 
   area.innerHTML = loadingHTML('Scoring test set…');
 
   try {
-    const res  = await fetch(`/api/validation?league=${league}`);
+    const leagueParam = league === 'All' ? 'ALL' : league;
+    const [res, recentRes] = await Promise.all([
+      fetch(`/api/validation?league=${league}`),
+      fetch(`/api/recent_results?league=${leagueParam}`)
+    ]);
+
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail || res.statusText); }
     const data = await res.json();
-    state.dataCache[key] = data;
-    buildValidationUI(data);
+
+    let recentResults = [];
+    if (recentRes.ok) {
+      const recentData = await recentRes.json();
+      recentResults = recentData.results || [];
+    }
+
+    state.dataCache[key] = { data, recent: recentResults };
+    buildValidationUI(data, recentResults);
   } catch (err) {
     const a = el('validation-area');
     if (a) a.innerHTML = errorHTML(err.message);
   }
 }
 
-function buildValidationUI(d) {
+function buildValidationUI(d, recentResults = []) {
   const area = el('validation-area');
   if (!area) return;
   const m   = d.metrics;
@@ -377,6 +411,24 @@ function buildValidationUI(d) {
     <div class="chart-wrap" style="height:260px"><canvas id="ch-sim"></canvas></div>
     <p class="chart-footnote">Strategy: for each test match, the model probability is compared to the B365 implied probability (overround-adjusted). The outcome with the largest positive gap is backed at the B365 closing odds. $1 staked per match.</p>
     ` : '<div class="info-state" style="margin-top:24px">No betting simulation data available.</div>'}
+
+    ${recentResults && recentResults.length > 0 ? `
+    <div class="section-header">
+      <span class="section-title">Recent Results</span>
+      <span class="section-caption">last 10 completed matches · model vs actual</span>
+    </div>
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Date</th><th>League</th><th>Home</th><th>Score</th><th>Away</th>
+          <th>H%</th><th>D%</th><th>A%</th><th>Result</th><th>Prediction</th><th>✓</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${recentResults.map(r => recentResultRowHTML(r)).join('')}
+      </tbody>
+    </table>
+    ` : ''}
   `;
 
   drawValidationCharts(d);

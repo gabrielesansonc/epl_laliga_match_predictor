@@ -229,6 +229,48 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
 .outcome-badge.outcome-d { background: rgba(107,114,128,0.2);  color: #9ca3af; }
 .outcome-badge.outcome-a { background: rgba(255,230,0,0.2);    color: var(--away-team); }
 
+/* ── Recent results table ─────────────────────────────────────────────────── */
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  margin-bottom: 32px;
+}
+
+.results-table th {
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-3);
+  padding: 0 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.results-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--text-1);
+  vertical-align: middle;
+}
+
+.results-table tr:last-child td { border-bottom: none; }
+.results-table tr:hover td { background: var(--card-hover); }
+
+.cell-dim   { color: var(--text-3); }
+.cell-home  { color: var(--home-team); font-weight: 500; }
+.cell-away  { color: var(--away-team); font-weight: 500; }
+.cell-score { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cell-prob  { text-align: center; font-size: 0.8125rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.prob-home  { color: var(--home-team); }
+.prob-draw  { color: var(--text-2); }
+.prob-away  { color: var(--away-team); }
+.cell-check { text-align: center; font-size: 1rem; }
+
+.result-correct   { color: var(--positive); }
+.result-incorrect { color: var(--negative); }
+
 /* Scoreboard grid: Home | Draw | Away */
 .match-layout {
   display: grid;

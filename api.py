@@ -256,6 +256,54 @@ def _get_betting_sim(val: pd.DataFrame) -> pd.DataFrame:
     return merged
 
 
+def _build_recent_results(league: str) -> list[dict]:
+    """Build list of last 10 completed matches with predictions vs actual results."""
+    history = _cached("history", _load_recent_history)
+    featured = build_features(history.copy(), drop_na=False)
+
+    # Filter to completed matches
+    completed = featured[featured["FTR"].notna() & featured["FTHG"].notna() & featured["FTAG"].notna()].copy()
+
+    if league != "ALL":
+        completed = completed[completed["Div"] == league]
+
+    # Last 10 per Div, sorted by date descending
+    recent = (
+        completed.sort_values("Date", ascending=False)
+        .groupby("Div", group_keys=False)
+        .head(10)
+        .sort_values(["Div", "Date"], ascending=[True, False])
+        .reset_index(drop=True)
+    )
+
+    if recent.empty:
+        return []
+
+    preds = predict(_load_model(), recent)
+    result = pd.concat([recent.reset_index(drop=True), preds.reset_index(drop=True)], axis=1)
+
+    out = []
+    for _, row in result.iterrows():
+        d = pd.Timestamp(row["Date"])
+        ftr = row["FTR"]
+        predicted = row["PredictedResult"]
+        out.append({
+            "date":       f"{d.strftime('%a')} {d.day} {d.strftime('%b %Y')}",
+            "league":     LEAGUE_LABELS.get(row["Div"], row["Div"]),
+            "home_team":  row["HomeTeam"],
+            "away_team":  row["AwayTeam"],
+            "home_goals": int(row["FTHG"]),
+            "away_goals": int(row["FTAG"]),
+            "result":     ftr,
+            "predicted":  predicted,
+            "correct":    bool(predicted == ftr),
+            "prob_h":     round(float(row["Prob_H"]), 4),
+            "prob_d":     round(float(row["Prob_D"]), 4),
+            "prob_a":     round(float(row["Prob_A"]), 4),
+        })
+    return out
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/health", response_class=PlainTextResponse)
@@ -304,6 +352,15 @@ def predict_json(home_team: str, away_team: str):
         })
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/recent_results")
+def get_recent_results(league: str = Query("ALL", pattern="^(ALL|SP1|E0)$")):
+    try:
+        results = _cached(f"recent_{league}", lambda: _build_recent_results(league))
+        return JSONResponse({"league": league, "count": len(results), "results": results})
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
