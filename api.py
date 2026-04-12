@@ -93,44 +93,45 @@ def _build_insights(row: pd.Series) -> list[dict]:
     a_pts = row.get("AwayRollingPoints10")
     if pd.notna(h_pts):
         if h_pts >= 21:
-            lines.append({"icon": "↑", "text": f"{home} strong form — {int(h_pts)} pts last 10"})
+            lines.append({"icon": "↑", "text": f"{home} strong form — {int(h_pts)} pts last 10", "team": "H"})
         elif h_pts <= 8:
-            lines.append({"icon": "↓", "text": f"{home} struggling — {int(h_pts)} pts last 10"})
+            lines.append({"icon": "↓", "text": f"{home} struggling — {int(h_pts)} pts last 10", "team": "H"})
     if pd.notna(a_pts):
         if a_pts >= 21:
-            lines.append({"icon": "↑", "text": f"{away} strong form — {int(a_pts)} pts last 10"})
+            lines.append({"icon": "↑", "text": f"{away} strong form — {int(a_pts)} pts last 10", "team": "A"})
         elif a_pts <= 8:
-            lines.append({"icon": "↓", "text": f"{away} struggling — {int(a_pts)} pts last 10"})
+            lines.append({"icon": "↓", "text": f"{away} struggling — {int(a_pts)} pts last 10", "team": "A"})
 
     h_gls = row.get("HomeRollingGoals20")
     h_rcv = row.get("HomeRollingReceivedGoals20")
     a_gls = row.get("AwayRollingGoals20")
     a_rcv = row.get("AwayRollingReceivedGoals20")
     if pd.notna(h_gls) and pd.notna(h_rcv) and (h_gls - h_rcv) >= 10:
-        lines.append({"icon": "→", "text": f"{home} +{int(h_gls - h_rcv)} GD last 20"})
+        lines.append({"icon": "→", "text": f"{home} +{int(h_gls - h_rcv)} GD last 20", "team": "H"})
     if pd.notna(a_gls) and pd.notna(a_rcv) and (a_gls - a_rcv) >= 10:
-        lines.append({"icon": "→", "text": f"{away} +{int(a_gls - a_rcv)} GD last 20"})
+        lines.append({"icon": "→", "text": f"{away} +{int(a_gls - a_rcv)} GD last 20", "team": "A"})
 
     h2h = row.get("HomeTeamPointsLast2Encounters")
     if pd.notna(h2h):
         if h2h >= 5:
-            lines.append({"icon": "H2H", "text": f"{home} dominant in recent H2H"})
+            lines.append({"icon": "H2H", "text": f"{home} dominant in recent H2H", "team": "H"})
         elif h2h <= 1:
-            lines.append({"icon": "H2H", "text": f"{away} dominant in recent H2H"})
+            lines.append({"icon": "H2H", "text": f"{away} dominant in recent H2H", "team": "A"})
 
     h_rank = row.get("HomeRank")
     a_rank = row.get("AwayRank")
     if pd.notna(h_rank) and h_rank <= 4:
-        lines.append({"icon": f"#{int(h_rank)}", "text": f"{home} top-4 contention"})
+        lines.append({"icon": f"#{int(h_rank)}", "text": f"{home} top-4 contention", "team": "H"})
     if pd.notna(a_rank) and a_rank <= 4:
-        lines.append({"icon": f"#{int(a_rank)}", "text": f"{away} top-4 contention"})
+        lines.append({"icon": f"#{int(a_rank)}", "text": f"{away} top-4 contention", "team": "A"})
 
     if not lines and pd.notna(h_pts) and pd.notna(a_pts):
         if abs(h_pts - a_pts) >= 6:
             better = home if h_pts > a_pts else away
-            lines.append({"icon": "→", "text": f"{better} in stronger recent form"})
+            team_type = "H" if better == home else "A"
+            lines.append({"icon": "→", "text": f"{better} in stronger recent form", "team": team_type})
         else:
-            lines.append({"icon": "=", "text": "Teams evenly matched on recent form"})
+            lines.append({"icon": "=", "text": "Teams evenly matched on recent form", "team": "D"})
 
     return lines[:3]
 

@@ -1,11 +1,11 @@
 'use strict';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const COLORS        = { H: '#6366f1', D: '#9ca3af', A: '#f87171' };
+const COLORS        = { H: '#2B6AF5', D: '#9ca3af', A: '#FFE600' };
 const OUTCOME_LABELS = { H: 'Home Win', D: 'Draw', A: 'Away Win' };
-const CHART_FONT    = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-const CHART_COLOR   = '#6b7280';
-const CHART_GRID    = '#1f2937';
+const CHART_FONT    = "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const CHART_COLOR   = '#b0c4de';
+const CHART_GRID    = '#1A3A52';
 
 // ── State ──────────────────────────────────────────────────────────────────────
 const state = {
@@ -34,11 +34,11 @@ function setupChartDefaults() {
   Chart.defaults.borderColor                      = CHART_GRID;
   Chart.defaults.font.family                      = CHART_FONT;
   Chart.defaults.font.size                        = 11;
-  Chart.defaults.plugins.tooltip.backgroundColor = '#1f2937';
-  Chart.defaults.plugins.tooltip.borderColor     = '#374151';
+  Chart.defaults.plugins.tooltip.backgroundColor = '#0F2347';
+  Chart.defaults.plugins.tooltip.borderColor     = '#1A3A52';
   Chart.defaults.plugins.tooltip.borderWidth     = 1;
-  Chart.defaults.plugins.tooltip.titleColor      = '#f9fafb';
-  Chart.defaults.plugins.tooltip.bodyColor       = '#9ca3af';
+  Chart.defaults.plugins.tooltip.titleColor      = '#ffffff';
+  Chart.defaults.plugins.tooltip.bodyColor       = '#b0c4de';
   Chart.defaults.plugins.tooltip.padding         = 10;
   Chart.defaults.plugins.tooltip.cornerRadius    = 8;
   Chart.defaults.plugins.legend.labels.color     = CHART_COLOR;
@@ -50,11 +50,11 @@ function baseScales(yFmt) {
   return {
     x: {
       grid:  { color: CHART_GRID, drawBorder: false },
-      ticks: { color: CHART_COLOR, font: { size: 11 } },
+      ticks: { color: CHART_COLOR, font: { size: 11, family: CHART_FONT } },
     },
     y: {
       grid:  { color: CHART_GRID, drawBorder: false },
-      ticks: { color: CHART_COLOR, font: { size: 11 }, callback: yFmt || (v => v) },
+      ticks: { color: CHART_COLOR, font: { size: 11, family: CHART_FONT }, callback: yFmt || (v => v) },
     },
   };
 }
@@ -545,11 +545,14 @@ function matchCardHTML(match) {
 
   const hasInsights = match.insights && match.insights.length > 0;
   const insightsHTML = hasInsights
-    ? match.insights.map(i => `
+    ? match.insights.map(i => {
+        const teamClass = i.team === 'H' ? 'insight-home' : i.team === 'A' ? 'insight-away' : '';
+        return `
         <div class="insight-line">
-          <span class="insight-dot">•</span>
+          <span class="insight-dot ${teamClass}">•</span>
           <span>${esc(i.text)}</span>
-        </div>`).join('')
+        </div>`;
+      }).join('')
     : '';
 
   const chevron = `
