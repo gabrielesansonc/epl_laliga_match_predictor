@@ -1,15 +1,27 @@
 """
 Data extraction utilities.
 
-Downloads historical match data from football-data.co.uk and scrapes
-upcoming fixtures from TalkSport.
+Downloads historical match data and upcoming fixtures from
+football-data.co.uk.
+
+NOTE (Sep 2026): Upcoming fixtures previously came from scraping TalkSport's
+per-league fixtures pages (talksport.com/football/{league}/fixtures). Those
+pages were removed from talksport.com's own site — even TalkSport's internal
+"See all" links now 301-redirect into a dead URL — so that source no longer
+works and can't be patched around. load_upcoming_fixtures() now reads
+football-data.co.uk's own rolling fixtures.csv feed instead: same trusted
+domain already used for historical results, structured CSV instead of
+scraped/versioned HTML, so it isn't exposed to the next frontend redesign.
+One tradeoff: fixtures.csv only carries a short rolling window (roughly the
+next few days across all leagues), so during international breaks a league
+can legitimately show zero upcoming fixtures for a bit — that's the real
+fixture calendar, not a bug.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
 
 
 # ---------------------------------------------------------------------------
@@ -27,10 +39,7 @@ RAW_COLUMNS = [
     "HY", "AY", "HR", "AR",
 ]
 
-FIXTURE_PAGES = {
-    "SP1": "https://talksport.com/football/primera-division/fixtures",
-    "E0": "https://talksport.com/football/premier-league/fixtures",
-}
+FIXTURES_CSV_URL = "https://www.football-data.co.uk/fixtures.csv"
 
 TEAM_NAME_FIXES = {
     # La Liga
@@ -48,14 +57,6 @@ TEAM_NAME_FIXES = {
     "Spurs": "Tottenham",
     "Man Utd": "Man United",
     "Nottm Forest": "Nott'm Forest",
-}
-
-REQUEST_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
 }
 
 
@@ -110,174 +111,75 @@ def load_historical_data(
 # Upcoming fixtures
 # ---------------------------------------------------------------------------
 
-def _parse_date_text(text: str, reference: datetime) -> str | None:
-    """Convert a TalkSport date header like 'Saturday 4th Apr' to 'YYYY-MM-DD'.
+# football-data.co.uk publishes Date/Time in UK local time.
+_UK_TZ = ZoneInfo("Europe/London")
 
-    Tries the reference year first; if the resulting date is more than 30 days in
-    the past it adds a year (handles fixtures that wrap across a calendar year).
+
+def _kickoff_utc(date_str: str, time_str: str) -> datetime | None:
+    """Combine a 'DD/MM/YYYY' date and 'HH:MM' kickoff time (UK local) into
+    an aware UTC datetime. Returns None if either field is missing/unparsable.
     """
-    import re
-    # Remove weekday prefix (Monday, Tue, Saturday, …)
-    clean = re.sub(r"^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s*", "", text, flags=re.IGNORECASE)
-    # Remove ordinal suffixes: 4th → 4, 21st → 21
-    clean = re.sub(r"(\d+)(st|nd|rd|th)", r"\1", clean).strip()
-    for year in (reference.year, reference.year + 1):
-        try:
-            dt = datetime.strptime(f"{clean} {year}", "%d %b %Y")
-            if dt.date() >= (reference - timedelta(days=30)).date():
-                return dt.strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    return None
+    if not isinstance(date_str, str) or not isinstance(time_str, str):
+        return None
+    try:
+        naive = datetime.strptime(f"{date_str.strip()} {time_str.strip()}", "%d/%m/%Y %H:%M")
+    except ValueError:
+        return None
+    return naive.replace(tzinfo=_UK_TZ).astimezone(timezone.utc)
 
 
-def _parse_fixtures_page(
-    soup: BeautifulSoup, reference: datetime
-) -> list[tuple[str | None, str, str, bool]]:
-    """Extract (date_iso, home, away, has_score) from a TalkSport fixtures page.
+def load_upcoming_fixtures(league_codes: list[str] = None) -> pd.DataFrame:
+    """Load upcoming, not-yet-played fixtures from football-data.co.uk.
 
-    Page structure: all fixture containers are direct children of a single
-    ``FixturesAndResultsContainer`` wrapper.  The *first* container of each
-    matchday embeds a ``FixturesHeader__title`` element with a human-readable
-    date ("Saturday 4th Apr").  Subsequent containers for that day carry no
-    header — the last seen date is reused.
+    football-data.co.uk publishes a rolling ``fixtures.csv`` covering all
+    leagues for the current window (typically the next several days). It's
+    the same trusted domain already used for historical results, and a
+    structured CSV instead of scraped/versioned HTML.
 
-    A match is considered upcoming when its ``FixtureDetails__time`` element
-    contains a kick-off time (HH:MM); if that element is absent or holds a
-    score the match is treated as already played.
-    """
-    import re
-
-    wrapper = soup.find(True, class_=lambda c: c and "FixturesAndResultsContainer" in c)
-    if wrapper is None:
-        return []
-
-    results: list[tuple[str | None, str, str, bool]] = []
-    seen: set[tuple[str, str]] = set()
-    current_date: str | None = None
-
-    for container in wrapper.find_all(
-        True,
-        class_=lambda c: c and "CompetitionFixtures" in c and "container" in c.lower(),
-        recursive=False,
-    ):
-        # Update current_date whenever this container opens a new matchday
-        header_el = container.find(
-            True, class_=lambda c: c and "FixturesHeader" in c and "title" in c
-        )
-        if header_el:
-            parsed = _parse_date_text(header_el.text.strip(), reference)
-            if parsed:
-                current_date = parsed
-
-        # Extract team names
-        teams = container.find_all(
-            True,
-            class_=lambda c: c and "__team" in c and "Wrapper" not in c
-                             and "FixtureDetails" in c,
-        )
-        if len(teams) < 2:
-            continue
-        home = teams[0].text.strip()
-        away = teams[1].text.strip()
-
-        key = (home, away)
-        if key in seen:
-            continue
-        seen.add(key)
-
-        # Determine played vs upcoming via the __time element:
-        # upcoming → "14:15" / "19:00"; played → score text or absent
-        time_el = container.find(
-            True, class_=lambda c: c and "FixtureDetails" in c and "__time" in c
-        )
-        if time_el:
-            time_text = time_el.text.strip()
-            has_score = not bool(re.match(r"^\d{1,2}:\d{2}$", time_text))
-        else:
-            has_score = True  # no time element → treat as already played
-
-        results.append((current_date, home, away, has_score))
-
-    return results
-
-
-def _scrape_fixtures(
-    base_url: str, div_code: str, max_matches: int = 10,
-) -> pd.DataFrame:
-    """Return a DataFrame of the next ``max_matches`` upcoming fixtures, sorted by date.
-
-    The TalkSport fixtures page lists all upcoming matchdays on a single page,
-    so a single fetch is normally sufficient.  A second fetch (next month URL)
-    is attempted as a fallback if fewer than ``max_matches`` unplayed matches
-    are found.
-    """
-    now = datetime.now()
-    all_upcoming: list[tuple[str, str, str]] = []  # (date_iso, home, away)
-    seen: set[tuple[str, str]] = set()
-
-    for month_offset in range(0, 3):
-        month = now.month + month_offset
-        year = now.year + (month - 1) // 12
-        month = (month - 1) % 12 + 1
-
-        url = base_url if month_offset == 0 else f"{base_url}/{year}-{month:02d}"
-
-        resp = requests.get(url, headers=REQUEST_HEADERS, timeout=15)
-        if resp.status_code != 200:
-            continue
-
-        soup = BeautifulSoup(resp.content, "html.parser")
-        for date_iso, home, away, has_score in _parse_fixtures_page(soup, now):
-            if has_score:
-                continue
-            key = (home, away)
-            if key in seen:
-                continue
-            seen.add(key)
-            all_upcoming.append((date_iso or now.strftime("%Y-%m-%d"), home, away))
-
-        if len(all_upcoming) >= max_matches:
-            break
-
-    if not all_upcoming:
-        return pd.DataFrame(columns=["Div", "Date", "HomeTeam", "AwayTeam"])
-
-    # Sort chronologically and keep only the next max_matches
-    all_upcoming.sort(key=lambda x: x[0])
-    all_upcoming = all_upcoming[:max_matches]
-
-    rows = [
-        {
-            "Div": div_code,
-            "Date": datetime.fromisoformat(d).strftime("%d/%m/%Y"),
-            "HomeTeam": home,
-            "AwayTeam": away,
-        }
-        for d, home, away in all_upcoming
-    ]
-    return pd.DataFrame(rows)
-
-
-def load_upcoming_fixtures(fixture_pages: dict[str, str] = None) -> pd.DataFrame:
-    """Scrape upcoming fixtures from TalkSport.
-
-    Returns a minimal DataFrame with Div, Date, HomeTeam, AwayTeam columns
-    (match stats are left as NaN; they get filled during feature engineering).
+    The feed isn't guaranteed to drop a row the instant a match kicks off,
+    so rows are filtered against the current UTC time (using each match's
+    UK-local kickoff) to make sure only genuinely unplayed fixtures are
+    returned. Rows with no parsable kickoff time are kept only if their
+    date is still today or later, since we can't otherwise confirm they
+    haven't already been played.
 
     Args:
-        fixture_pages: Mapping of league code → URL. Defaults to FIXTURE_PAGES.
+        league_codes: League codes to keep. Defaults to LEAGUE_CODES (E0, SP1).
 
     Returns:
-        DataFrame of upcoming matches.
+        DataFrame with Div, Date, HomeTeam, AwayTeam columns (match stats
+        are left as NaN; they get filled during feature engineering).
     """
-    if fixture_pages is None:
-        fixture_pages = FIXTURE_PAGES
+    if league_codes is None:
+        league_codes = LEAGUE_CODES
 
-    frames = [_scrape_fixtures(url, code) for code, url in fixture_pages.items()]
-    df = pd.concat(frames, ignore_index=True)
-    df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
-    return df
+    raw = pd.read_csv(FIXTURES_CSV_URL, encoding="utf-8-sig")
+    raw = raw[raw["Div"].isin(league_codes)].copy()
+
+    now_utc = datetime.now(timezone.utc)
+    today_uk = datetime.now(_UK_TZ).date()
+
+    keep = []
+    for _, row in raw.iterrows():
+        kickoff = _kickoff_utc(row.get("Date"), row.get("Time"))
+        if kickoff is not None:
+            keep.append(kickoff > now_utc)
+            continue
+        # No usable kickoff time — fall back to a date-only check so we
+        # don't accidentally keep something clearly in the past.
+        date_only = pd.to_datetime(row.get("Date"), dayfirst=True, errors="coerce")
+        keep.append(bool(pd.notna(date_only) and date_only.date() >= today_uk))
+
+    # Build an explicit boolean Series (not a plain list) for the mask: when
+    # a league has zero rows (e.g. E0 during an international break), an
+    # empty Python list is ambiguous to pandas' __getitem__ and gets read as
+    # "select these zero columns" rather than "keep these zero rows", which
+    # would silently drop every column instead of just filtering to nothing.
+    keep_mask = pd.Series(keep, index=raw.index, dtype=bool)
+    upcoming = raw.loc[keep_mask, ["Div", "Date", "HomeTeam", "AwayTeam"]].reset_index(drop=True)
+    upcoming["Date"] = pd.to_datetime(upcoming["Date"], dayfirst=True, errors="coerce")
+    upcoming = upcoming.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+    return upcoming
 
 
 def align_team_names(
