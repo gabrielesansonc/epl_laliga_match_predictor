@@ -34,7 +34,8 @@ import json
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from functools import lru_cache
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 
@@ -63,8 +64,33 @@ OPENFOOTBALL_FILES = {"E0": "en.1.json", "SP1": "es.1.json"}
 # La Liga matchday is exactly 10 matches (20 teams), so this is one round.
 DEFAULT_FIXTURE_LIMIT = 10
 
-# Kickoff times in openfootball are league-local, not UTC.
-LEAGUE_TIMEZONES = {"E0": ZoneInfo("Europe/London"), "SP1": ZoneInfo("Europe/Madrid")}
+# Kickoff times in openfootball are league-local, not UTC. Stored as names and
+# resolved lazily: ZoneInfo reads the IANA database from the operating system,
+# which slim container images routinely ship without. Building the ZoneInfo
+# objects at import time meant a missing tz database raised
+# ZoneInfoNotFoundError while this module was still being imported, taking down
+# the whole API — including every endpoint that has nothing to do with
+# kickoff times. requirements.txt now pins tzdata so the data is always
+# present; this resolver is the belt-and-braces half.
+LEAGUE_TIMEZONE_NAMES = {"E0": "Europe/London", "SP1": "Europe/Madrid"}
+
+
+@lru_cache(maxsize=None)
+def league_timezone(league_code: str):
+    """Return the tzinfo for a league's local kickoff times.
+
+    Falls back to UTC if the platform has no IANA time zone database. That
+    shifts displayed kickoff times by at most an hour or two rather than
+    failing the request, which is the right trade for a fixture list.
+    """
+    name = LEAGUE_TIMEZONE_NAMES.get(league_code)
+    if name is None:
+        return timezone.utc
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, KeyError, ValueError):
+        print(f"  No time zone data for {name}; falling back to UTC.")
+        return timezone.utc
 
 # openfootball uses full club names ("Manchester City FC"); the model is
 # trained on football-data.co.uk's short names ("Man City"). These are mapped
@@ -292,7 +318,7 @@ def load_upcoming_fixtures(
 
     rows: list[dict] = []
     for code in league_codes:
-        tz = LEAGUE_TIMEZONES.get(code, timezone.utc)
+        tz = league_timezone(code)
 
         matches: list[dict] = []
         for candidate in seasons:

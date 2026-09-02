@@ -4,3 +4,7 @@ scikit-learn>=1.4
 fuzzywuzzy>=0.18
 fastapi>=0.116
 python-multipart>=0.0.20
+# Provides the IANA time zone database. zoneinfo reads it from the OS, and
+# slim container images often ship without it, so pin it explicitly rather
+# than depending on the host image.
+tzdata>=2024.1
