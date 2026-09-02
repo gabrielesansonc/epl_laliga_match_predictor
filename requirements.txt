@@ -4,6 +4,11 @@ scikit-learn>=1.4
 fuzzywuzzy>=0.18
 fastapi>=0.116
 python-multipart>=0.0.20
+# The ASGI server the service is started with. Render runs
+# `uvicorn api:app --host 0.0.0.0 --port $PORT`, and the build installs only
+# what is listed here, so omitting it made every deploy die with
+# `uvicorn: command not found` (exit 127) after a successful build.
+uvicorn>=0.30
 # Provides the IANA time zone database. zoneinfo reads it from the OS, and
 # slim container images often ship without it, so pin it explicitly rather
 # than depending on the host image.
