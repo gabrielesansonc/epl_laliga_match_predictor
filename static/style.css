@@ -13,8 +13,13 @@ html { font-size: 16px; }
   --text-3:       #8b9fb8;
   --accent-primary:   #FF7400;
   --accent-secondary: #FF8C1A;
+  --accent-dim:   rgba(255, 116, 0, 0.14);
   --home-team:    #2B6AF5;
   --away-team:    #FFE600;
+  /* Chrome (headers/nav) sits on the brand navy, not a neutral black */
+  --chrome:       rgba(10, 25, 47, 0.88);
+  /* Height of the fixed mobile bottom nav, used to keep content clear of it */
+  --bottom-nav-h: 64px;
   --red-5:        #ef4444;
   --red-4:        #f87171;
   --positive:     #4ade80;
@@ -41,17 +46,19 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(19, 20, 27, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--chrome);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
   border-bottom: 1px solid var(--border);
+  padding-top: env(safe-area-inset-top);
 }
 
 .mobile-header-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 10px 16px;
+  min-height: 48px;
 }
 
 .mobile-brand {
@@ -66,8 +73,12 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
 }
 
 .menu-btn {
-  padding: 8px;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
   color: var(--text-2);
   transition: background 0.15s, color 0.15s;
 }
@@ -144,19 +155,20 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
 }
 
 /* ── Page header ───────────────────────────────────────────────────────────── */
-.page-header { margin-bottom: 24px; }
+.page-header { margin-bottom: 16px; }
 
 .page-header h1 {
-  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-size: clamp(1.375rem, 6vw, 2.25rem);
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.15;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .page-header p {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   color: var(--text-2);
+  max-width: 46ch;
 }
 
 /* ── League tabs ───────────────────────────────────────────────────────────── */
@@ -171,7 +183,8 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
 .tabs::-webkit-scrollbar { display: none; }
 
 .tab {
-  padding: 8px 20px;
+  padding: 10px 20px;
+  min-height: 44px;
   border-radius: 999px;
   font-size: 0.9375rem;
   font-weight: 500;
@@ -186,21 +199,29 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
 
 /* ── Fixture count ─────────────────────────────────────────────────────────── */
 .fixture-count {
-  font-size: 0.875rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   color: var(--text-3);
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 /* ── Match card ────────────────────────────────────────────────────────────── */
-.fixtures-list { display: flex; flex-direction: column; gap: 12px; }
+.fixtures-list { display: flex; flex-direction: column; gap: 10px; }
 
 .match-card {
   background: var(--card);
-  border-radius: 16px;
-  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
   cursor: pointer;
-  transition: background 0.15s, transform 0.2s;
+  transition: background 0.15s, border-color 0.15s, transform 0.2s;
   user-select: none;
+}
+.match-card:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .match-card:hover {
@@ -214,10 +235,17 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
-.card-meta { font-size: 0.8125rem; color: var(--text-2); }
+.card-meta {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .outcome-badge {
   font-size: 0.75rem;
@@ -225,9 +253,10 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
   padding: 4px 12px;
   border-radius: 999px;
 }
-.outcome-badge.outcome-h { background: rgba(43,106,245,0.2);   color: var(--home-team); }
-.outcome-badge.outcome-d { background: rgba(107,114,128,0.2);  color: #9ca3af; }
-.outcome-badge.outcome-a { background: rgba(255,230,0,0.2);    color: var(--away-team); }
+.outcome-badge { flex-shrink: 0; border: 1px solid transparent; }
+.outcome-badge.outcome-h { background: rgba(43,106,245,0.16);  border-color: rgba(43,106,245,0.40);  color: #8FB4FF; }
+.outcome-badge.outcome-d { background: rgba(148,163,184,0.14); border-color: rgba(148,163,184,0.35); color: #CBD5E1; }
+.outcome-badge.outcome-a { background: rgba(255,230,0,0.12);   border-color: rgba(255,230,0,0.38);   color: #FFE600; }
 
 /* ── Recent results table ─────────────────────────────────────────────────── */
 .results-table {
@@ -275,8 +304,13 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
 .match-layout {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
-  gap: 8px;
-  margin-bottom: 14px;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 10px;
+  /* On a wide screen an unbounded 1fr/auto/1fr grid throws the two clubs ~950px
+     apart and the pairing stops reading as one match. */
+  max-width: 720px;
+  margin-inline: auto;
 }
 
 .team-block { display: flex; flex-direction: column; gap: 2px; }
@@ -286,18 +320,19 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
 .team-name {
   font-size: 1rem;
   font-weight: 600;
+  line-height: 1.25;
   color: var(--text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 140px;
+  max-width: 100%;
 }
 
 .team-prob {
-  font-size: 1.875rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
 
@@ -320,29 +355,33 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
-  padding: 0 8px;
+  padding: 0 4px;
+  min-width: 46px;
 }
 
 .draw-prob {
-  font-size: 1.875rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  color: var(--text-2);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 
 /* Probability bar */
 .prob-bar {
   display: flex;
-  height: 7px;
+  height: 6px;
   border-radius: 999px;
   overflow: hidden;
-  margin-bottom: 12px;
+  gap: 2px;
+  background: rgba(255,255,255,0.04);
+  max-width: 720px;
+  margin-inline: auto;
 }
 
 .prob-h { background: var(--home-team); }
-.prob-d { background: #4b5563; }
+.prob-d { background: #64748b; }
 .prob-a { background: var(--away-team); }
 
 /* Insights — expandable */
@@ -359,6 +398,7 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
 .insights-section.expanded {
   max-height: 320px;
   opacity: 1;
+  margin-top: 12px;
 }
 
 .insight-line {
@@ -388,13 +428,23 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
 /* Chevron toggle */
 .card-chevron {
   display: flex;
+  align-items: center;
   justify-content: center;
-  margin-top: 10px;
+  gap: 6px;
+  margin-top: 8px;
+  min-height: 32px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
   color: var(--text-3);
-  transition: transform 0.25s ease;
+  transition: color 0.15s;
 }
+.match-card:hover .card-chevron { color: var(--text-2); }
 
-.card-chevron.rotated { transform: rotate(180deg); }
+/* Rotate only the icon, so the label stays upright when expanded. */
+.card-chevron svg { transition: transform 0.25s ease; }
+.card-chevron.rotated svg { transform: rotate(180deg); }
 
 /* ── Loading / states ──────────────────────────────────────────────────────── */
 .loading-full {
@@ -596,46 +646,100 @@ button { background: none; border: none; font-family: inherit; cursor: pointer; 
   position: fixed;
   bottom: 0; left: 0; right: 0;
   z-index: 50;
-  background: rgba(19, 20, 27, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--chrome);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
   border-top: 1px solid var(--border);
   grid-template-columns: repeat(3, 1fr);
-  padding: 8px 16px 12px;
+  padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
   gap: 4px;
 }
 
 .bnav-item {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  padding: 8px;
+  padding: 8px 4px;
+  min-height: 52px;
   border-radius: 10px;
   font-size: 0.6875rem;
   font-weight: 500;
   color: var(--text-3);
-  transition: background 0.15s, color 0.15s;
+  transition: color 0.15s;
 }
 .bnav-item:active { background: rgba(255,255,255,0.04); }
-.bnav-item.active { color: var(--accent-primary); background: rgba(255,116,0,0.1); }
+
+/* Active tab is marked by the accent itself plus a small top rule — the old
+   translucent-orange fill rendered as a muddy brown block against the navy. */
+.bnav-item.active { color: var(--accent-primary); background: none; }
+.bnav-item.active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 26px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+}
 
 /* ── Responsive ────────────────────────────────────────────────────────────── */
 @media (max-width: 1023px) {
   .sidebar-col { display: none; }
   .mobile-header { display: block; }
   .bottom-nav { display: grid; }
-  .page-container { padding: 16px 16px 96px; }
+  /* Clear the fixed nav *and* the iOS home indicator, or the last card is cut off. */
+  .page-container {
+    padding: 16px 16px calc(var(--bottom-nav-h) + 24px + env(safe-area-inset-bottom));
+  }
   .content { padding-top: 0; }
 }
 
 @media (max-width: 767px) {
-  .page-container { padding: 12px 12px 96px; }
+  .page-container {
+    padding: 12px 12px calc(var(--bottom-nav-h) + 20px + env(safe-area-inset-bottom));
+  }
   .metrics-row, .sim-metrics-row { grid-template-columns: repeat(2, 1fr); }
   .charts-grid { grid-template-columns: 1fr; }
   .form-row { flex-direction: column; }
-  .team-name { max-width: 100px; font-size: 0.875rem; }
-  .team-prob, .draw-prob { font-size: 1.5rem; }
+  .team-prob { font-size: 1.375rem; }
+  .draw-prob { font-size: 1.0625rem; }
   .match-card { border-radius: 12px; }
-  .match-card:hover { transform: none; }
+  .match-card:hover { transform: none; background: var(--card); }
+}
+
+/* Very narrow phones: keep long club names on one line. */
+@media (max-width: 380px) {
+  .team-name { font-size: 0.9375rem; }
+  .team-prob { font-size: 1.25rem; }
+  .card-meta { font-size: 0.75rem; }
+}
+
+/* Wide tables (validation / results) scroll inside themselves, never the page.
+   Without this an 11-column table drags the whole document to ~725px on a
+   390px phone, so every screen scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  margin-bottom: 32px;
+  /* Bleed to the container edge so the cut-off column reads as scrollable. */
+  margin-inline: -12px;
+  padding-inline: 12px;
+}
+.table-scroll .results-table {
+  min-width: 640px;
+  margin-bottom: 0;
+}
+
+/* Honour the OS reduced-motion setting. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

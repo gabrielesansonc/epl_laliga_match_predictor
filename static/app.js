@@ -93,14 +93,28 @@ function navigate(page) {
 function attachCardToggle(containerId) {
   const container = el(containerId);
   if (!container) return;
-  container.addEventListener('click', e => {
-    const card = e.target.closest('.match-card');
-    if (!card) return;
+  const toggle = card => {
     const section = card.querySelector('.insights-section');
     const chevron = card.querySelector('.card-chevron');
     if (!section) return;
     const expanded = section.classList.toggle('expanded');
     if (chevron) chevron.classList.toggle('rotated', expanded);
+    card.setAttribute('aria-expanded', String(expanded));
+  };
+
+  // Enter/Space must work wherever a pointer does.
+  container.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.match-card[role="button"]');
+    if (!card) return;
+    e.preventDefault();
+    toggle(card);
+  });
+
+  container.addEventListener('click', e => {
+    const card = e.target.closest('.match-card');
+    if (!card) return;
+    toggle(card);
   });
 }
 
@@ -417,6 +431,7 @@ function buildValidationUI(d, recentResults = []) {
       <span class="section-title">Recent Results</span>
       <span class="section-caption">last 10 completed matches · model vs actual</span>
     </div>
+    <div class="table-scroll">
     <table class="results-table">
       <thead>
         <tr>
@@ -428,6 +443,7 @@ function buildValidationUI(d, recentResults = []) {
         ${recentResults.map(r => recentResultRowHTML(r)).join('')}
       </tbody>
     </table>
+    </div>
     ` : ''}
   `;
 
@@ -609,11 +625,16 @@ function matchCardHTML(match) {
 
   const chevron = `
     <div class="card-chevron">
+      <span>Why</span>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
     </div>`;
 
+  const a11y = hasInsights
+    ? ` role="button" tabindex="0" aria-expanded="false" aria-label="${esc(match.home_team)} versus ${esc(match.away_team)}, show reasoning"`
+    : '';
+
   return `
-<div class="match-card">
+<div class="match-card"${a11y}>
   <div class="card-header">
     <span class="card-meta">${esc(match.date)}&ensp;&middot;&ensp;${esc(match.league)}</span>
     <span class="outcome-badge ${badgeClass}">${esc(badgeLabel)}</span>
